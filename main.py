@@ -1,24 +1,14 @@
-def main():
-    parser = multicommand.create_parser(commands)
-    args = parser.parse_args()
+import asyncio
 
-    if not hasattr(args, 'handler'):
-        parser.print_help()
-        return
+import uvloop
 
-    try:
-        doers = args.handler(args)
-        directing.runController(doers=doers, expire=0.0)
+from kami.app.cli.kami import kamiCli
 
-    except Exception as ex:
-        import os
-        if os.getenv('DEBUG_KLI'):
-            import traceback
-            traceback.print_exc()
-        else:
-            print(f"ERR: {ex}")
-        return -1
+
+async def cli():
+    await kamiCli()
 
 
 if __name__ == "__main__":
-    main()
+    uvloop.install()
+    asyncio.run(cli())
