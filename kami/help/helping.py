@@ -6,10 +6,19 @@ kami.help.helping module
 import base64
 import dataclasses
 import datetime
+import errno
+import functools
+import json
+import os
 import re
+import stat
+import types
+from abc import ABCMeta
 from collections import deque
 from collections.abc import Iterable, Sequence, Mapping
 
+import cbor
+import msgpack
 import pysodium
 
 # usage:
@@ -79,7 +88,7 @@ def datify(cls, d):
 
         fieldtypes = {f.name: f.type for f in dataclasses.fields(cls)}
         return cls(**{f: datify(fieldtypes[f], d[f]) for f in d})  # recursive
-    except:
+    except Exception:
         return d  # Not a dataclass.
 
 
@@ -104,16 +113,189 @@ def klasify(sers: Iterable, klases: Iterable, args: Iterable = None):
                  for ser, klas, arg in zip(sers, klases, args))
 
 
+#
+# from HIO
+#
+
+
+def copyfunc(f, name=None):
+    """
+    Copy a function in detail.
+    To change name of func provide name parameter
+
+    functools to update_wrapper assigns and updates following attributes
+    WRAPPER_ASSIGNMENTS = ('__module__', '__name__', '__qualname__', '__doc__',
+                       '__annotations__')
+    WRAPPER_UPDATES = ('__dict__',)
+    Based on
+    https://stackoverflow.com/questions/6527633/how-can-i-make-a-deepcopy-of-a-function-in-python
+    https://stackoverflow.com/questions/13503079/how-to-create-a-copy-of-a-python-function
+    """
+    g = types.FunctionType(f.__code__,
+                           f.__globals__,
+                           name=f.__name__,
+                           argdefs=f.__defaults__,
+                           closure=f.__closure__
+                          )
+    g = functools.update_wrapper(g, f)
+    g.__kwdefaults__ = f.__kwdefaults__
+    if name:
+        g.__name__ = name
+    return g
+
+
+
+def repack(n, seq, default=None):
+    """ Repacks seq into a generator of len n and returns the generator.
+        The purpose is to enable unpacking into n variables.
+        The first n-1 elements of seq are returned as the first n-1 elements of the
+        generator and any remaining elements are returned in a tuple as the
+        last element of the generator
+        default (None) is substituted for missing elements when len(seq) < n
+
+        Example:
+
+        x = (1, 2, 3, 4)
+        tuple(repack(3, x))
+        (1, 2, (3, 4))
+
+        x = (1, 2, 3)
+        tuple(repack(3, x))
+        (1, 2, (3,))
+
+        x = (1, 2)
+        tuple(repack(3, x))
+        (1, 2, ())
+
+        x = (1, )
+        tuple(repack(3, x))
+        (1, None, ())
+
+        x = ()
+        tuple(repack(3, x))
+        (None, None, ())
+
+    """
+    it = iter(seq)
+    for i in range(n - 1):
+        yield next(it, default)
+    yield tuple(it)
+
+
+def just(n, seq, default=None):
+    """ Returns a generator of just the first n elements of seq and substitutes
+        default (None) for any missing elements. This guarantees that a generator of exactly
+        n elements is returned. This is to enable unpacking into n varaibles
+
+        Example:
+
+        x = (1, 2, 3, 4)
+        tuple(just(3, x))
+        (1, 2, 3)
+        x = (1, 2, 3)
+        tuple(just(3, x))
+        (1, 2, 3)
+        x = (1, 2)
+        tuple(just(3, x))
+        (1, 2, None)
+        x = (1, )
+        tuple(just(3, x))
+        (1, None, None)
+        x = ()
+        tuple(just(3, x))
+        (None, None, None)
+
+    """
+    it = iter(seq)
+    for i in range(n):
+        yield next(it, default)
+
+
+class NonStringIterable(metaclass=ABCMeta):
+    """
+    Allows isinstance check for iterable that is not a string
+    if isinstance(x, NonStringIterable):
+    """
+    @classmethod
+    def __subclasshook__(cls, C):
+        if cls is NonStringIterable:
+            if (not issubclass(C, (str, bytes)) and issubclass(C, Iterable)):
+                return True
+        return NotImplemented
+
+
+class NonStringSequence(metaclass=ABCMeta):
+    """
+    Allows isinstance check for sequence that is not a string
+    if isinstance(x, NonStringSequence):
+    """
+    @classmethod
+    def __subclasshook__(cls, C):
+        if cls is NonStringSequence:
+            if (not issubclass(C, (str, bytes)) and issubclass(C, Sequence)):
+                return True
+        return NotImplemented
+
+
+def dump(data, path):
+    """
+    Serialize data dict and write to file given by path where serialization is
+    given by path's extension of either JSON, MsgPack, or CBOR for extension
+    .json, .mgpk, or .cbor respectively
+    """
+
+    if ' ' in path:
+        raise IOError(f"Invalid file path '{path}' contains space.")
+
+    root, ext = os.path.splitext(path)
+    if ext == '.json':
+        with ocfn(path, "w+b") as f:
+            json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+    elif ext == '.mgpk':
+        with ocfn(path, "w+b") as f:
+            msgpack.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
+    elif ext == '.cbor':
+        with ocfn(path, "w+b") as f:
+            cbor.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
+    else:
+        raise IOError(f"Invalid file path ext '{path}' "
+                      f"not '.json', '.mgpk', or 'cbor'.")
+
+
+def load(path):
+    """
+    Return data read from file path as dict
+    file may be either json, msgpack, or cbor given by extension .json, .mgpk, or
+    .cbor respectively
+    Otherwise raise IOError
+    """
+    root, ext = os.path.splitext(path)
+    if ext == '.json':
+        with ocfn(path, "rb") as f:
+            it = json.load(f)
+    elif ext == '.mgpk':
+        with ocfn(path, "rb") as f:
+            it = msgpack.load(f)
+    elif ext == '.cbor':
+        with ocfn(path, "rb") as f:
+            it = cbor.load(f)
+    else:
+        raise IOError(f"Invalid file path ext '{path}' "
+                     f"not '.json', '.mgpk', or 'cbor'.")
+
+    return it
 
 def nonStringIterable(obj):
     """
-    Returns:
-        (bool): True if obj is non-string iterable, False otherwise
+    Returns: (bool) True if obj is non-string iterable, False otherwise
 
-    Future proof way that is compatible with both Python3 and Python2 to check
-    for non string iterables.
-
-    Faster way that is less future proof
+    Another way that is less future proof
     return (hasattr(x, '__iter__') and not isinstance(x, (str, bytes)))
     """
     return (not isinstance(obj, (str, bytes)) and isinstance(obj, Iterable))
@@ -121,13 +303,29 @@ def nonStringIterable(obj):
 
 def nonStringSequence(obj):
     """
-    Returns: True if obj is non-string sequence, False otherwise
+    Returns: (bool) True if obj is non-string sequence, False otherwise
+    """
+    return (not isinstance(obj, (str, bytes)) and isinstance(obj, Sequence) )
 
-    Future proof way that is compatible with both Python3 and Python2 to check
-    for non string sequences.
+
+def isIterator(obj):
+    """
+    Returns True if obj is an iterator object, that is,
+
+    has an __iter__ method
+    has a __next__ method
+    .__iter__ is callable and returns obj
+
+    Otherwise returns False
 
     """
-    return (not isinstance(obj, (str, bytes)) and isinstance(obj, Sequence))
+    if (hasattr(obj, "__iter__") and
+        hasattr(obj, "__next__") and
+        callable(obj.__iter__) and
+        obj.__iter__() is obj
+       ):
+        return True
+    return False
 
 
 def extractElementValues(element, values):
@@ -245,6 +443,40 @@ def fromIso8601(dts):
     return (datetime.datetime.fromisoformat(dts))
 
 
+#
+# File Utilities
+#
+def ocfn(path, mode='r+', perm=(stat.S_IRUSR | stat.S_IWUSR)):
+    """
+    Atomically open or create file from filepath.
+    TODO convert to aiofiles rather than os and stat
+
+    If file already exists, Then open file using openMode
+    Else create file using write update mode If not binary Else
+        write update binary mode
+    Returns file object
+
+    If binary Then If new file open with write update binary mode
+
+    x = stat.S_IRUSR | stat.S_IWUSR
+    384 == 0o600
+    436 == octal 0664
+    """
+    try:
+
+        newfd = os.open(path, os.O_EXCL | os.O_CREAT | os.O_RDWR, perm)
+        if "b" in mode:
+            file = os.fdopen(newfd,"w+b")  # w+ truncate read and/or write
+        else:
+            file = os.fdopen(newfd,"w+")  # w+ truncate read and/or write
+
+    except OSError as ex:
+        if ex.errno == errno.EEXIST:
+            file = open(path, mode)  # r+ do not truncate read and/or write
+        else:
+            raise
+    return file
+
 
 # Base64 utilities
 BASE64_PAD = b'='
@@ -264,12 +496,12 @@ B64IdxByChr = {char: index for index, char in B64ChrByIdx.items()}
 B64_CHARS = tuple(B64ChrByIdx.values())  # tuple of characters in Base64
 
 
-B64REX = b'^[0-9A-Za-z_-]*\Z'   # [A-Za-z0-9\-\_]
+B64REX = b'^[0-9A-Za-z_-]*\\Z'   # [A-Za-z0-9\-\_]
 Reb64 = re.compile(B64REX)  # compile is faster
 # to use if Reb64.match(bext):
 
 
-def intToB64(i, l=1):
+def intToB64(i, l=1):  # noqa: E741
     """
     Returns conversion of int i to Base64 str
     l is min number of b64 digits left padded with Base64 0 == "A" char
@@ -283,15 +515,15 @@ def intToB64(i, l=1):
             break
     for j in range(l - len(d)):  # range(x)  x <= 0 means do not iterate
         d.appendleft("A")
-    return ("".join(d))
+    return "".join(d)
 
 
-def intToB64b(i, l=1):
+def intToB64b(i, l=1):  # noqa: E741
     """
     Returns conversion of int i to Base64 bytes
     l is min number of b64 digits left padded with Base64 0 == "A" char
     """
-    return (intToB64(i=i, l=l).encode("utf-8"))
+    return intToB64(i=i, l=l).encode("utf-8")
 
 
 def b64ToInt(s):
@@ -306,7 +538,6 @@ def b64ToInt(s):
     for e, c in enumerate(reversed(s)):
         i |= B64IdxByChr[c] << (e * 6)  # same as i += B64IdxByChr[c] * (64 ** e)
     return i
-
 
 
 def codeB64ToB2(s):
@@ -325,7 +556,7 @@ def codeB64ToB2(s):
     return (i.to_bytes(n, 'big'))
 
 
-def codeB2ToB64(b, l):
+def codeB2ToB64(b, l):  # noqa: E741
     """
     Returns conversion (encode) of l Base2 sextets from front of b to Base64 chars.
     One char for each of l sextets from front (left) of b.
@@ -343,10 +574,10 @@ def codeB2ToB64(b, l):
     # check if prepad bits are zero
     tbs = 2 * (l % 4)  # trailing bit size in bits
     i >>= tbs  # right shift out trailing bits to make right aligned
-    return (intToB64(i, l))  # return as B64
+    return intToB64(i, l)  # return as B64
 
 
-def nabSextets(b, l):
+def nabSextets(b, l):  # noqa: E741
     """
     Return first l sextets from front (left) of b as bytes (byte string).
     Length of bytes returned is minimum sufficient to hold all l sextets.
@@ -354,7 +585,7 @@ def nabSextets(b, l):
     b is bytes or str
     """
     if hasattr(b, 'encode'):
-        b = b.encode("utf-8")  # convert to bytes
+        b = b.encode()  # convert to bytes
     n = sceil(l * 3 / 4)  # number of bytes needed for l sextets
     if n > len(b):
         raise ValueError("Not enough bytes in {} to nab {} sextets.".format(b, l))
@@ -362,7 +593,7 @@ def nabSextets(b, l):
     p = 2 * (l % 4)
     i >>= p  # strip of last bits
     i <<= p  # pad with empty bits
-    return (i.to_bytes(n, 'big'))
+    return i.to_bytes(n, 'big')
 
 
 def keyToKey64u(key):
@@ -389,9 +620,9 @@ def verifyEd25519(sig, msg, vk):
     """
     try:
         result = pysodium.crypto_sign_verify_detached(sig, msg, vk)
-    except Exception as ex:
+    except Exception:
         return False
-    return (True if result else False)
+    return True if result else False
 
 
 def verify64uEd25519(signature, message, verkey):
@@ -406,6 +637,6 @@ def verify64uEd25519(signature, message, verkey):
     sig = key64uToKey(signature)
     vk = key64uToKey(verkey)
     msg = message.encode("utf-8")
-    return (verifyEd25519(sig, msg, vk))
+    return verifyEd25519(sig, msg, vk)
 
 

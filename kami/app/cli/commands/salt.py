@@ -5,9 +5,9 @@ kami.app.cli.commands module
 """
 import argparse
 
-from kami.core import coring
-
 import pysodium
+
+from kami.core import coring
 
 parser = argparse.ArgumentParser(description='Print a new random passcode')
 parser.set_defaults(handler=lambda args: handler(args))

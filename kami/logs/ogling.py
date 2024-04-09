@@ -1,0 +1,335 @@
+# -*- encoding: utf-8 -*-
+"""
+kami.logs.ogling module
+
+Provides python stdlib logs module support
+
+"""
+import logging
+import logging.handlers
+import os
+import shutil
+import sys
+import tempfile
+from contextlib import contextmanager
+
+from ..kering import OglerError
+
+
+def initOgler(level=logging.CRITICAL, **kwa):
+    """
+    Initialize the ogler global instance once
+    Usage:
+       # At top level of module in project
+       # assign ogler as module global instance availabe at modulename.ogler
+       ogler = kami.logs.ogling.initOgler(prefix='kami', syslogged=False)
+
+       # module is mypackage.logs  then ogler at mypackage.logs.ogler
+
+    Critical is most severe to restrict logs by default
+
+    Parameters:
+        force is Boolean True is to force reinit even if global ogler is not None
+        level is default logs level
+
+    This should be called in package .__init__ to insure that global ogler is
+    defined by default. Users may then reset level and reopen log file if need be
+    before calling ogler.getLoggers()
+    """
+    return Ogler(level=level, **kwa)
+
+
+@contextmanager
+def openOgler(cls=None, name="test", temp=True, **kwa):
+    """
+    Context manager wrapper Ogler instances.
+    Defaults to temporary file logs.
+    Context 'with' statements call .close on exit of 'with' block
+
+    Parameters:
+        cls is Class instance of subclass instance
+        name is str name of ogler instance for filename so can have multiple oglers
+             at different paths thar each use different log file directories
+        temp is Boolean, True means open in temporary directory, clear on close
+                Otherwise open in persistent directory, do not clear on close
+
+    Usage:
+
+    with openOgler(name="bob") as ogler:
+        logger = ogler.getLogger()  ....
+
+    with openOgler(name="eve", cls=SubclassedOgler)
+
+    """
+    ogler = None
+    if cls is None:
+        cls = Ogler
+    try:
+        ogler = cls(name=name, temp=temp, reopen=True, **kwa)
+        yield ogler
+
+    finally:
+        if ogler:
+            ogler.close()  # if .temp also clears
+
+
+class Ogler():
+    """Olger instances provide loggers as global logs facility
+    Only need one Ogler per application
+    Uses python stdlib logs module, logs.getLogger(name).
+    Multiple calls to .getLogger() with the same name will always return a
+       reference to the same Logger object.
+
+    Attributes:
+        name (str): usage specific component used in file name
+        level (int): logs severity level
+        temp (bool): True means use /tmp directory
+        prefix (str): application specific path prefix and formating
+        headDirPath (str): head of path
+        dirPath (str): full directory path
+        path (str): full file path
+        opened (bool): True means file is opened, False not opened
+        consoled (bool): True means log to console (stderr), False do not
+        syslogged (bool): True means log to syslog, False do not
+        filed (bool): True means log to rotating file at .path, False do not
+        when (str): interval type for timed rotating file handler
+        interval (int): length of interval of type when
+        count (int): backup count number of backups to keep
+    """
+    Prefix = "kami"
+    HeadDirPath = "/usr/local/var"  # default in /usr/local/var
+    TailDirPath = "logs"
+    AltHeadDirPath = "~"  # put in ~ as fallback when desired dir not permitted
+    TempHeadDir = "/tmp"
+    TempPrefix = "test_"
+    TempSuffix = "_temp"
+
+    def __init__(self, name='main', level=logging.ERROR, temp=False,
+                 prefix=None, headDirPath=None, reopen=False, clear=False,
+                 consoled=True, syslogged=True, filed=True,
+                 when='H', interval=1, count=48):
+        """
+        Init Loggery factory instance
+
+        Parameters:
+            name (str): application specific log file name
+            level (int):  logs level from logs. Higher is more restrictive.
+                This sets the minimum level of the baseLogger and failLogger
+                relative to the global level.
+                Logs will output if action level is at or above set level.
+
+                Level    Numeric value
+                CRITICAL 50
+                ERROR    40
+                WARNING  30
+                INFO     20
+                DEBUG    10
+                NOTSET    0
+
+            temp (bool): True means use /tmp directory and clear on close
+                         False means use  headDirpath
+            prefix (str): application specific path prefix and logs template
+            headDirPath (str): custom headDirPath for log file
+            reopen (str); True means reopen path if anything changed
+            clear (bool): True means clear .dirPath when closing in reopen
+            consoled (bool): True means log to console (stderr), False do not
+            syslogged (bool): True means log to syslog, False do not
+            filed (bool): True means log to rotating file in .dirPath, False do not
+        """
+        self.name = name if name else 'main'  # for file name
+        self.level = level  # basic logger level
+        self.temp = True if temp else False
+        self.prefix = prefix if prefix is not None else self.Prefix
+        self.headDirPath = headDirPath if headDirPath is not None else self.HeadDirPath
+        self.dirPath = None
+        self.path = None
+        self.opened = False
+
+        if not (consoled or syslogged or filed):
+            raise OglerError("One of consoled, syslogged, or filed must be True.")
+
+        self.consoled = True if consoled else False
+        self.syslogged = True if syslogged else False
+        self.filed = True if filed else False
+
+        self.when = when
+        self.interval = interval
+        self.count = count
+
+        #create formatters
+        fmt = "{}: %(message)s".format(self.prefix)
+        self.baseFormatter = logging.Formatter(fmt)  # basic format
+
+        #create console handlers and assign formatters
+        self.baseConsoleHandler = logging.StreamHandler()  # sys.stderr
+        self.baseConsoleHandler.setFormatter(self.baseFormatter)
+        if sys.platform == 'darwin':
+            address = '/var/run/syslog'
+        else:
+            address = '/dev/log'
+        facility = logging.handlers.SysLogHandler.LOG_USER  # LOG_DAEMON
+        self.baseSysLogHandler = logging.handlers.SysLogHandler(address=address,
+                                                                facility=facility)
+        self.baseSysLogHandler.setFormatter(self.baseFormatter)
+        # SysLogHandler only appears to log at ERROR level despite the set level
+        #self.baseSysLogHandler.encodePriority(self.baseSysLogHandler.LOG_USER,
+                                              #self.baseSysLogHandler.LOG_DEBUG)
+        if reopen:
+            self.reopen(headDirPath=self.headDirPath, clear=clear)
+
+
+    def reopen(self, name=None, temp=None, headDirPath=None, clear=False):
+        """
+        Use or Create if not preexistent, directory path .dirPath for file .path
+        First closes .path if already opened. If clear is True then also clears
+        .path before reopening
+
+        Parameters:
+            name is optional name
+                if None or unchanged then ignore otherwise recreate path
+                    When recreating path, If not provided use .name
+            temp is optional boolean:
+                If None ignore Otherwise
+                    Assign to .temp
+                    If True then open temporary directory,
+                    If False then open persistent directory
+            headDirPath is optional str head directory pathname of main database
+                if None or unchanged then ignore otherwise recreate path
+                   When recreating path, If not provided use default .HeadDirpath
+            clear is Boolean True means clear .path when closing
+        """
+        if self.opened:
+            self.close(clear=clear)
+
+        # check for changes in path parts if need to recreate
+        if name is not None and name == self.name:
+            name = None  # don't need to recreate path because of name change
+
+        if temp is not None and temp == self.temp:
+            temp = None  # don't need to recreate path because of temp change
+
+        if headDirPath is not None and headDirPath == self.headDirPath:
+            headDirPath = None  # don't need to recreate path because of headDirPath change
+
+        # always recreates if path is empty or if path part has changed
+
+        if (not self.dirPath or
+             temp is not None or
+             headDirPath is not None or
+             name is not None):  # need to recreate path
+
+            if temp is not None:
+                self.temp = True if temp else False
+            if headDirPath is not None:
+                self.headDirpath = headDirPath
+            if name is not None:  # used below for filename
+                self.name = name
+
+            if self.temp:
+                dirPath = os.path.abspath(
+                                        os.path.join(self.TempHeadDir,
+                                                    self.prefix,
+                                                    self.TailDirPath))
+                if not os.path.exists(dirPath):
+                    os.makedirs(dirPath)  # mkdtemp only makes last dir
+                self.dirPath = tempfile.mkdtemp(prefix=self.TempPrefix,
+                                                suffix=self.TempSuffix,
+                                                dir=dirPath)
+
+            else:
+                self.dirPath = os.path.abspath(
+                        os.path.expanduser(
+                                            os.path.join(self.headDirPath,
+                                                         self.prefix,
+                                                         self.TailDirPath)))
+
+                if not os.path.exists(self.dirPath):
+                    try:
+                        os.makedirs(self.dirPath)
+                    except OSError:  # can't make dir
+                        # use alt=user's directory instead
+                        prefix = ".{}".format(self.prefix)  # hide it
+                        self.dirPath = os.path.abspath(
+                                                os.path.expanduser(
+                                                                os.path.join(self.AltHeadDirPath,
+                                                                             prefix,
+                                                                            self.TailDirPath)))
+                        if not os.path.exists(self.dirPath):
+                            os.makedirs(self.dirPath)
+                else:  # path exists
+                    if not os.access(self.dirPath, os.R_OK | os.W_OK):
+                        # but can't access it
+                        # use alt=user's directory instead
+                        prefix = ".{}".format(self.prefix)  # hide it
+                        self.dirPath = os.path.abspath(
+                                                os.path.expanduser(
+                                                                os.path.join(self.AltHeadDirPath,
+                                                                             prefix,
+                                                                             self.TailDirPath)))
+                        if not os.path.exists(self.dirPath):
+                            os.makedirs(self.dirPath)
+
+            fileName = "{}.log".format(self.name)
+            self.path = os.path.join(self.dirPath, fileName)
+
+            #create file handlers and assign formatters
+            self.baseFileHandler = logging.handlers.TimedRotatingFileHandler(
+                                                        self.path,
+                                                        when=self.when,
+                                                        interval=self.interval,
+                                                        backupCount=self.count)
+            self.baseFileHandler.setFormatter(self.baseFormatter)
+
+        self.opened = True
+
+
+    def close(self, clear=False):
+        """
+        Set .opened to False and remove directory at .path
+        Parameters:
+           clear is boolean, True means clear directory
+        """
+        self.opened = False
+        if clear or self.temp:
+            self.clearDirPath()
+
+
+    def clearDirPath(self):
+        """
+        Remove logfile directory at .dirPath
+        """
+        if self.dirPath and os.path.exists(self.dirPath):
+            shutil.rmtree(self.dirPath)
+
+
+    def resetLevel(self, name=__name__, level=None, globally=False):
+        """
+        Resets the level of preexisting loggers to level. If level is None then
+        use .level
+        """
+        level = level if level is not None else self.level
+        if globally:
+            self.level = level
+        logger = logging.getLogger(name)  # singleton
+        logger.setLevel(level)
+
+
+    def getLogger(self, name=__name__, level=None):
+        """
+        Returns Basic Logger
+        default is to name logger after module
+        """
+        logger = logging.getLogger(name)
+        logger.propagate = False  # disable propagation of events
+        level = level if level is not None else self.level
+        logger.setLevel(level)
+        for handler in list(logger.handlers):  # remove so no duplicate handlers
+            logger.removeHandler(handler)
+        if self.consoled:
+            logger.addHandler(self.baseConsoleHandler)
+        if self.syslogged:
+            logger.addHandler(self.baseSysLogHandler)
+        if self.filed and self.opened:
+            logger.addHandler(self.baseFileHandler)
+        return logger
+
