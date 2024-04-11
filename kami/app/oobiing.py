@@ -303,7 +303,7 @@ class Oobiery:
         # self.doers = [self.clienter, doing.doify(self.scoobiDo)]
         # This will take some thinking of data flow here and what scoobiDoo is doing
 
-    def scoobiDo(self, tymth=None, tock=0.0):
+    async def scoobiDo(self, tymth=None, tock=0.0):
         """
         Returns doifiable Doist compatibile generator method (doer dog) to process
             .exc responses and pass them on to the HTTPRespondant

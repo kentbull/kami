@@ -5,8 +5,9 @@ kami.app.habbing module
 
 """
 import json
-from contextlib import contextmanager
+from contextlib import contextmanager, AsyncExitStack
 from math import ceil
+from typing import List
 from urllib.parse import urlsplit
 
 from kami.peer import exchanging
@@ -104,6 +105,194 @@ def openHab(name="test", base="", salt=None, temp=True, cf=None, **kwa):
         yield hby, hab
 
 
+# replaces openHby
+class MakeHaberyCtx:
+    """
+    Async context manager wrapper for Habery.
+    Defaults to temporary resources.
+    Context 'async with' statements call .close on __aexit__ of 'async with' block
+    """
+    def __init__(
+            self,
+            seed: str = None, aeid: str = None, bran: str = None, pidx: int = None,
+            algo: str = None, tier: str = None, free: bool = False,
+            name: str = "test", base: str ="", temp: bool = True, salt: str = None,
+            clear: bool = False, headDirPath: str = None,
+            ksx: keeping.KeeperCtx = None, dbx: basing.BaserCtx = None, cfx: configing.ConfigerCtx = None,
+    ):
+        """
+        Async context manager wrapper for Habery.
+
+        Parameters:
+            name(str): name of habitat to create
+            base(str): the name used for shared resources i.e. Baser and Keeper The habitat specific config file will be
+            in base/name
+            salt(bytes): passed to habitat to use for inception raw salt not qb64
+            temp(bool): indicates if this uses temporary databases
+
+        """
+        # Used for file creation
+        self.name = name
+        self.base = base
+        self.temp = temp
+        self.clear = clear
+        self.headDirPath = headDirPath
+
+        # Passed along to setup function
+        self.salt = salt if salt is not None else coring.Salter().qb64
+        self.seed = seed
+        self.aeid = aeid
+        self.bran = bran
+        self.pidx = pidx
+        self.algo = algo
+        self.tier = tier
+        self.free = free
+
+        # Context managers for the resources
+        self.ksx = ksx
+        self.dbx = dbx
+        self.cfx = cfx
+
+        self.stack = AsyncExitStack()
+
+
+    async def __aenter__(self):
+        self.ks = await self.stack.enter_async_context(self.ksx if self.ksx else keeping.KeeperCtx(
+            keeper=keeping.Keeper(name=self.name,
+                                  base=self.base,
+                                  temp=self.temp,
+                                  reopen=True,
+                                  clear=self.clear,
+                                  headDirPath=self.headDirPath)
+        ))
+        self.db = await self.stack.enter_async_context(self.dbx if self.dbx is not None else basing.BaserCtx(
+            baser=basing.Baser(name=self.name,
+            base=self.base,
+            temp=self.temp,
+            reopen=True,
+            clear=self.clear,
+            headDirPath=self.headDirPath)
+        ))
+        self.cf = await self.stack.enter_async_context(self.cfx if self.cfx is not None else configing.ConfigerCtx(
+            configer=configing.Configer(name=self.name,
+            base=self.base,
+            temp=self.temp,
+            reopen=True,
+            clear=self.clear)
+        ))
+
+        # Explicity pass the context rather than rely on kwargs due to not wanting to pass
+        # context managers to Habery.setup
+        self.habery = Habery(
+            name=self.name, base=self.base, temp=self.temp, clear=self.clear, headDirPath=self.headDirPath,
+            seed=self.seed, aeid=self.aeid, bran=self.bran, pidx=self.pidx, algo=self.algo,
+            tier=self.tier, free=self.free, salt=self.salt,
+            ks=self.ks, db=self.db, cf=self.cf
+        )
+        if not self.habery.inited:
+            self.habery.setup(**self.habery._inits)
+        return self.habery
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.stack.__aexit__(exc_type, exc, tb)
+        if self.habery and self.habery.inited and self.habery.free:
+            self.habery.close(clear=self.habery.temp)
+
+
+
+# replaces openHab
+class HabCtx:
+    """
+    Async context manager for the Hab instance, returning a Habery and a Hab.
+
+    Defaults to temporary resources.
+    Context 'async with' statements call .close on __aexit__ of 'async with' block
+
+    Notes:
+        cf argument was removed since it wasn't used in KERIpy
+    """
+
+    def __init__(
+            self,
+            ns: str = None, name: str = "test", base: str = "", temp: bool = True, clear: bool = False, headDirPath: str = None,
+            salt: bytes = None, seed: str = None, aeid: str = None, bran: str = None,
+            pidx: int = None, algo: str = None, tier: str = None, free: bool = False,
+            secrecies: List = None, iridx: int = 0, code: str = coring.MtrDex.Blake3_256, dcode: str = coring.MtrDex.Blake3_256,
+            icode: str = coring.MtrDex.Ed25519_Seed,  transferable: bool = True, isith: int|str|List = None,
+            icount: int = 1, nsith: int|str|List = None, ncount: int = 1, toad: int|str = None, wits: List = None,
+            delpre: str = None, estOnly: str = None, data: List = None, DnD: bool = False
+    ):
+        """
+
+        :param name: name of habitat to create
+        :param base: the name used for shared resources
+                     i.e., Baser and Keeper
+                     The habitat specific config file will be in base/name
+        :param salt: passed to habitat to use for inception raw salt not qb64
+        :param temp: indicates if this uses temporary databases
+        :param kwa: keyword arguments to be passed on to the Hab instance
+        """
+        # Used for file creation
+        self.ns = ns
+        self.name = name
+        self.base = base
+        self.temp = temp
+        self.clear = clear
+        self.headDirPath = headDirPath
+
+        # Passed along to Habery.setup function
+        self.salt = coring.Salter(raw=salt).qb64
+        self.seed = seed
+        self.aeid = aeid
+        self.bran = bran
+        self.pidx = pidx
+        self.algo = algo
+        self.tier = tier
+        self.free = free
+
+        # Passed along to Hab.makeHab
+        self.secrecies = secrecies
+        self.iridx = iridx
+        self.code = code
+        self.dcode = dcode
+        self.icode = icode
+        self.transferable = transferable
+        self.isith = isith
+        self.icount = icount
+        self.nsith = nsith
+        self.ncount = ncount
+        self.toad = toad
+        self.wits = wits
+        self.delpre = delpre
+        self.estOnly = estOnly
+        self.data = data
+        self.DnD = DnD
+
+        self.habery_ctx = MakeHaberyCtx(
+            seed=seed, aeid=aeid, bran=bran, pidx=pidx, algo=algo, tier=tier, free=free,
+            name=self.name, base=self.base, temp=self.temp, salt=self.salt,
+            clear=self.clear, headDirPath=self.headDirPath
+        )
+        self.hab = None
+
+    async def __aenter__(self):
+        self.habery  = await self.habery_ctx.__aenter__()
+        if(hab := self.habery.habByName(self.name)) is None:
+            hab = self.habery.makeHab(
+                name=self.name, ns=self.ns,
+                secrecies=self.secrecies, iridx=self.iridx, code=self.code, dcode=self.dcode, icode=self.icode,
+                transferable=self.transferable, isith=self.isith, icount=self.icount, nsith=self.nsith, ncount=self.ncount,
+                toad=self.toad, wits=self.wits, delpre=self.delpre, estOnly=self.estOnly, DnD=self.DnD,
+                data=self.data, algo=self.algo, salt=self.salt, tier=self.tier
+            )
+        self.hab = hab
+
+        return self.habery, self.hab
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.habery_ctx.__aexit__(exc_type, exc_val, exc_tb)
+
+
 class Habery:
     """Habery class provides shared database environments for all its Habitats
     Key controller and identifier controller shared configuration file, keystore
@@ -144,7 +333,8 @@ class Habery:
     """
 
     def __init__(self, *, name='test', base="", temp=False,
-                 ks=None, db=None, cf=None, clear=False, headDirPath=None, **kwa):
+                 ks=None, db=None, cf=None, clear=False, headDirPath=None,
+                 free=False, **kwa):
         """
         Initialize instance.
 
@@ -157,7 +347,7 @@ class Habery:
                 Store .ks, .db, and .cf in /tmp
                 Use quick method to stretch salts for seeds such as
                     bran salt to seed or key creation of Habs.
-                    Otherwise use more resources set by tier to stretch
+                    Otherwise, use more resources set by tier to stretch
             ks (Keeper):  keystore lmdb subclass instance
             db (Baser): database lmdb subclass instance
             cf (Configer): config file instance
@@ -168,10 +358,10 @@ class Habery:
             headDirPath (str): directory override
 
 
-        Parameters: Passed through via kwa to setup for later init
+        Parameters: Passed through via kwa to set up for later init
             seed (str): qb64 private-signing key (seed) for the aeid from which
                 the private decryption key may be derived. If aeid stored in
-                database is not empty then seed may required to do any key
+                database is not empty then seed may be required to do any key
                 management operations. The seed value is memory only and MUST NOT
                 be persisted to the database for the manager with which it is used.
                 It MUST only be loaded once when the process that runs the Manager
@@ -181,7 +371,7 @@ class Habery:
             aeid (str): qb64 of non-transferable identifier prefix for
                 authentication and encryption of secrets in keeper. If provided
                 aeid (not None) and different from aeid stored in database then
-                all secrets Haberyare re-encrypted using new aeid. In this case the
+                all secrets Habery are re-encrypted using new aeid. In this case the
                 provided prikey must not be empty. A change in aeid should require
                 a second authentication mechanism besides the prikey.
             bran (str): Base64 char string of which first 21 chars are used as
@@ -227,11 +417,12 @@ class Habery:
         self.psr = parsing.Parser(framed=True, kvy=self.kvy, rvy=self.rvy,
                                   exc=self.exc, local=True)
         self.habs = {}  # empty .habs
-        self._signator = None
+        self._signator: None | Signator = None
         self.inited = False
+        self.free = True if free else False
 
         # save init kwy word arg parameters as ._inits in order to later finish
-        # init setup elseqhere after databases are opened if not below
+        # init setup elsewhere after databases are opened if not below
         self._inits = kwa
         self._inits['temp'] = temp  # add temp for seed from bran tier override
 
@@ -274,7 +465,7 @@ class Habery:
                 default is root algo which defaults to salty
             salt (str): qb64 salt for creating key pairs
             tier (str): security tier for generating keys from salt (Tierage)
-            free (boo): free resources by closing on Doer exit if any
+            free (bool): free resources by closing on async context exit if any
             temp (bool): True means use shortcuts for testing.
                     Use quick method to stretch salts for seeds such as
                     bran salt to seed or key creation of Habs.
@@ -847,16 +1038,93 @@ class Signator:
         """
         return self._hab.kever.verfers[0].verify(cigar.raw, ser)
 
+class HaberyCtx:
+    """
+    Async context manager for a Habery instance
+    """
+    def __init__(self, habery: Habery):
+        self.habery: Habery = habery
+
+    async def __aenter__(self):
+        if not self.habery.inited:
+            self.habery.setup(**self.habery._inits)
+        return self.habery
+
+    async def __aexit__(self, exc_type, exc, tb):
+        if self.habery.inited and self.habery.free:
+            self.habery.close(clear=self.habery.temp)
+
+class HaberyDoer: # used to be a (doing.Doer):
+    pass
+    # """
+    # Basic Habery Doer  to initialize habery databases and config file.
+    # .cf, .ks, .db
+    #
+    # Inherited Attributes:
+    #     .done is Boolean completion state:
+    #         True means completed
+    #         Otherwise incomplete. Incompletion maybe due to close or abort.
+    #
+    # Attributes:
+    #     .habery is Habery subclass
+    #
+    # Inherited Properties:
+    #     .tyme is float relative cycle time of associated Tymist .tyme obtained
+    #         via injected .tymth function wrapper closure.
+    #     .tymth is function wrapper closure returned by Tymist .tymeth() method.
+    #         When .tymth is called it returns associated Tymist .tyme.
+    #         .tymth provides injected dependency on Tymist tyme base.
+    #     .tock is float, desired time in seconds between runs or until next run,
+    #              non negative, zero means run asap
+    #
+    # Properties:
+    #
+    # Methods:
+    #     .wind  injects ._tymth dependency from associated Tymist to get its .tyme
+    #     .__call__ makes instance callable
+    #         Appears as generator function that returns generator
+    #     .do is generator method that returns generator
+    #     .enter is enter context action method
+    #     .recur is recur context action method or generator method
+    #     .exit is exit context method
+    #     .close is close context method
+    #     .abort is abort context method
+    #
+    # Hidden:
+    #     ._tymth is injected function wrapper closure returned by .tymen() of
+    #         associated Tymist instance that returns Tymist .tyme. when called.
+    #     ._tock is hidden attribute for .tock property
+    # """
+    #
+    # def __init__(self, habery, **kwa):
+    #     """
+    #     Parameters:
+    #        habery (Habery): instance
+    #     """
+    #     super(HaberyDoer, self).__init__(**kwa)
+    #     self.habery = habery
+    #
+    # def enter(self):
+    #     """ Enter context and set up Habery """
+    #     if not self.habery.inited:
+    #         self.habery.setup(**self.habery._inits)
+    #
+    # def exit(self):
+    #     """Exit context and close Habery """
+    #     if self.habery.inited and self.habery.free:
+    #         self.habery.close(clear=self.habery.temp)
+
+
 
 class BaseHab:
     """
-    Hab class provides a given idetnifier controller's local resource environment
+    Hab class provides a given identifier controller's local resource environment
     i.e. hab or habitat. Includes dependency injection of database, keystore,
-    configuration file as well as Kevery and key store Manager..
+    configuration file as well as Kevery and key store Manager.
 
     Attributes: (Injected)
         ks (keeping.Keeper): lmdb key store
-        db (basing.Baser): lmdb data base for KEL etc
+        db (basing.Baser): lmdb database for KEL, etc.
         cf (configing.Configer): config file instance
         mgr (keeping.Manager): creates and rotates keys in key store
         rtr (routing.Router): routes reply 'rpy' messages
@@ -878,13 +1146,12 @@ class BaseHab:
     Properties:
         kever (Kever): instance of key state of local controller
         kevers (dict): of eventing.Kever instances from KELs in local db
-            keyed by qb64 prefix. Read through cache of of kevers of states for
+            keyed by qb64 prefix. Read through cache of kevers of states for
             KELs in db.states
         iserder (coring.Serder): own inception event
         prefixes (OrderedSet): local prefixes for .db
         accepted (bool): True means accepted into local KEL.
-                          False otherwise
-
+                         False otherwise
     """
 
     def __init__(self, ks, db, cf, mgr, rtr, rvy, kvy, psr, *,
@@ -909,24 +1176,23 @@ class BaseHab:
             temp (bool): True means testing:
                 use weak level when salty algo for stretching in key creation
                 for incept and rotate of keys for this hab.pre
-
         """
-        self.db = db  # injected
-        self.ks = ks  # injected
-        self.cf = cf  # injected
-        self.mgr = mgr  # injected
-        self.rtr = rtr  # injected
-        self.rvy = rvy  # injected
-        self.kvy = kvy  # injected
-        self.psr = psr  # injected
+        self.db: basing.Baser = db  # injected
+        self.ks: keeping.Keeper = ks  # injected
+        self.cf: configing.Configer = cf  # injected
+        self.mgr: keeping.Manager = mgr  # injected
+        self.rtr: routing.Router = rtr  # injected
+        self.rvy: routing.Revery = rvy  # injected
+        self.kvy: eventing.Kevery = kvy  # injected
+        self.psr: parsing.Parser = psr  # injected
 
         self.name = name
-        self.ns = ns  # what is this?
-        self.pre = pre  # wait to setup until after db is known to be opened
+        self.ns = ns  # namespace
+        self.pre = pre  # wait to set up until after db is known to be opened
         self.temp = True if temp else False
 
         self.inited = False
-        self.delpre = None  # assigned laster if delegated
+        self.delpre = None  # assigned later if delegated
 
     def make(self, DnD, code, data, delpre, estOnly, isith, verfers, nsith, digers, toad, wits):
         """

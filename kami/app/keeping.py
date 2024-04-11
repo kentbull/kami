@@ -266,6 +266,21 @@ class Keeper(dbing.LMDBer):
                                  schema=PubSet,)  # public key set at pre.ridx
         return self.opened
 
+class KeeperCtx:
+    """
+    Async context manager for Keeper instance
+    """
+    def __init__(self, keeper: Keeper):
+        self.keeper: Keeper = keeper
+
+    async def __aenter__(self) -> Keeper:
+        if not self.keeper.opened:
+             self.keeper.reopen()
+        return self.keeper
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.keeper.close(clear=self.keeper.temp)
+
 class KeeperDoer:  # used to be a (doing.Doer)
     pass
     # """

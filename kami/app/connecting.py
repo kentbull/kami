@@ -9,18 +9,21 @@ import re
 from ordered_set import OrderedSet as oset
 
 from kami import kering
+from kami.app.habbing import Habery
 
 
 class Organizer:
-    """ Organizes contacts relating contact information to AIDs """
+    """
+    Organizes contacts relating contact information to AIDs
+    """
 
-    def __init__(self, hby):
+    def __init__(self, hby: Habery):
         """ Create contact Organizer
 
         Parameters:
             hby (Habery): database environment for contact information
         """
-        self.hby = hby
+        self.hby: Habery = hby
 
     def update(self, pre, data):
         """ Add or update contact information in data for the identifier prefix

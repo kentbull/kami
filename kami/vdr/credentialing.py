@@ -256,7 +256,7 @@ class BaseRegistry:
 
 class Registry(BaseRegistry):
     """
-
+    Credential Registry for issuing credentials
     """
 
     def make(self, *, nonce=None, noBackers=True, baks=None, toad=None, estOnly=False, vcp=None):

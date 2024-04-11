@@ -1,4 +1,5 @@
 import asyncio
+from typing import List, Coroutine
 
 import multicommand
 import uvloop
@@ -18,9 +19,9 @@ async def kamiCli():
         return
 
     try:
-        tasks = [args.handler(args)]
+        tasks: List[Coroutine] = args.handler(args)
         # replace with asyncio event loop
-        await directing.runController(tasks=tasks)
+        results = await directing.runController(tasks=tasks)
 
     except Exception as ex:
         import os

@@ -3287,7 +3287,7 @@ class Kevery:
         .pipeline is Boolean, True means use pipeline processor to process
                 ims msgs when stream includes pipelined count codes.
         lax (bool): True means operate in promiscuous (unrestricted) mode,
-                           False means operate in nonpromiscuous (restricted) mode
+                           False means operate in non-promiscuous (restricted) mode
                               as determined by local and prefixes
 
         local (bool): True means only process msgs for own events if not lax
@@ -3330,7 +3330,7 @@ class Kevery:
             kevers is dict of Kever instances of key state in db
             db (Baser): instance of database
             lax (bool): True means operate in promiscuous (unrestricted) mode,
-                           False means operate in nonpromiscuous (restricted) mode
+                           False means operate in non-promiscuous (restricted) mode
                               as determined by local and prefixes
             local (bool): True means event source is local (protected) for validation
                          False means event source is remote (unprotected) for validation

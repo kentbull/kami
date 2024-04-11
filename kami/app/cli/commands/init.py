@@ -15,21 +15,7 @@ from kami.vdr import credentialing
 
 logger = logs.ogler.getLogger()
 
-
-def handler(args):
-    """
-    Launch KERI database initialization
-
-    Args:
-        args(Namespace): arguments object from command line
-    """
-    init = InitCmd.initialize(args)
-    return [init]
-
-
 parser = argparse.ArgumentParser(description='Create a database and keystore')
-parser.set_defaults(handler=handler,
-                    transferable=True)
 
 # Parameters for basic structure of database
 parser.add_argument('--name', '-n', help='keystore name and file location of KERI keystore', required=True)
@@ -45,7 +31,7 @@ parser.add_argument('--config-file',
                     help="configuration filename override")
 
 # Parameters for Manager creation
-# passcode => bran
+# passcode => bran (salt)
 parser.add_argument('--passcode', '-p', help='22 character encryption passcode for keystore (is not saved)',
                     dest="bran", default=None)
 parser.add_argument('--nopasscode', help='create an unencrypted keystore', action='store_true')
@@ -54,14 +40,27 @@ parser.add_argument('--aeid', '-a', help='qualified base64 of non-transferable i
 parser.add_argument('--seed', '-e', help='qualified base64 private-signing key (seed) for the aeid from which the '
                                          'private decryption key may be derived', default=None)
 
+def handler(args):
+    """
+    Launch KERI database initialization
+
+    Args:
+        args(Namespace): arguments object from command line
+    """
+    init = InitCmd(args).initialize()
+    return [init]
+
+parser.set_defaults(handler=handler, transferable=True)
+
 
 class InitCmd:
 
     def __init__(self, args):
         self.args = args
 
-    @staticmethod
-    async def initialize(args):
+    async def initialize(self):
+        print("Initializing KERI database and keystore...")
+        args = self.args
         name = args.name
         if name is None or name == "":
             raise ConfigurationError("Name is required and can not be empty")
@@ -109,45 +108,45 @@ class InitCmd:
         if hby.mgr.aeid:
             print("\taeid:", hby.mgr.aeid)
 
-        oc = hby.db.oobis.cntAll()
-        if oc:
-            print(f"\nLoading {oc} OOBIs...")
-
-            # todo add to async loop
-            obi = kami.app.oobiing.Oobiery(hby=hby)
-            print(f"OOBI: {obi}")
-            # self.extend(obi.doers)
-
-            # todo run after keystore creation
-            while oc > hby.db.roobi.cntAll():
-                yield 0.25
-
-            for (oobi,), obr in hby.db.roobi.getItemIter():
-                if obr.state in (oobiing.Result.resolved,):
-                    print(oobi, "succeeded")
-                if obr in (oobiing.Result.failed,):
-                    print(oobi, "failed")
-
-            # self.remove(obi.doers)
-
-        wc = [oobi for (oobi,), _ in hby.db.woobi.getItemIter()]
-        if len(wc) > 0:
-            print(f"\nAuthenticating {len(wc)} Well-Knowns...")
-            # todo add to async loop
-            authn = oobiing.Authenticator(hby=hby)
-            print(f"Authenticator: {authn}")
-            # self.extend(authn.doers)
-
-            # todo run after keystore creation
-            while True:
-                cap = []
-                for (_,), wk in hby.db.wkas.getItemIter(keys=b''):
-                    cap.append(wk.url)
-
-                if set(wc) & set(cap) == set(wc):
-                    break
-
-                yield 0.5
+        # oc = hby.db.oobis.cntAll()
+        # if oc:
+        #     print(f"\nLoading {oc} OOBIs...")
+        #
+        #     # todo add to async loop
+        #     obi = kami.app.oobiing.Oobiery(hby=hby)
+        #     print(f"OOBI: {obi}")
+        #     # self.extend(obi.doers)
+        #
+        #     # todo run after keystore creation
+        #     while oc > hby.db.roobi.cntAll():
+        #         yield 0.25
+        #
+        #     for (oobi,), obr in hby.db.roobi.getItemIter():
+        #         if obr.state in (oobiing.Result.resolved,):
+        #             print(oobi, "succeeded")
+        #         if obr in (oobiing.Result.failed,):
+        #             print(oobi, "failed")
+        #
+        #     # self.remove(obi.doers)
+        #
+        # wc = [oobi for (oobi,), _ in hby.db.woobi.getItemIter()]
+        # if len(wc) > 0:
+        #     print(f"\nAuthenticating {len(wc)} Well-Knowns...")
+        #     # todo add to async loop
+        #     authn = oobiing.Authenticator(hby=hby)
+        #     print(f"Authenticator: {authn}")
+        #     # self.extend(authn.doers)
+        #
+        #     # todo run after keystore creation
+        #     while True:
+        #         cap = []
+        #         for (_,), wk in hby.db.wkas.getItemIter(keys=b''):
+        #             cap.append(wk.url)
+        #
+        #         if set(wc) & set(cap) == set(wc):
+        #             break
+        #
+        #         yield 0.5
 
             # self.remove(authn.doers)
 

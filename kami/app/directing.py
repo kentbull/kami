@@ -1,4 +1,5 @@
 import asyncio
+from typing import List, Coroutine
 
 from .. import logs
 
@@ -650,10 +651,11 @@ class Reactant:  # used to be a doing.Doer
 
 
 
-async def runController(tasks):
+async def runController(tasks: List[Coroutine]):
     """
     Runs the controller event loop with the given tasks
     :param tasks: the list of tasks to run in this event loop
     :return:
     """
-    return await asyncio.gather(*tasks)
+    results = await asyncio.gather(*tasks)
+    return results

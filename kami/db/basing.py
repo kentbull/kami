@@ -3205,6 +3205,19 @@ class Baser(dbing.LMDBer):
         """
         return self.delIoVal(self.ldes, key, val)
 
+class BaserCtx:
+    """
+    Async context manager for Baser instance
+    """
+    def __init__(self, baser: Baser):
+        self.baser: Baser = baser
+    async def __aenter__(self):
+        if not self.baser.opened:
+            self.baser.reopen()
+        return self.baser
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.baser.close(clear=self.baser.temp)
 
 class BaserDoer: # used to be (doing.Doer):
     pass

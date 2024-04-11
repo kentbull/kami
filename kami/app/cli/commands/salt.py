@@ -10,18 +10,31 @@ import pysodium
 from kami.core import coring
 
 parser = argparse.ArgumentParser(description='Print a new random passcode')
-parser.set_defaults(handler=lambda args: handler(args))
 
 
-async def handler(_):
-    salt = passcode()
-    print(salt)
-    return salt
+def handler(_):
+    """
+    Return a list of coroutines to be run to create a passcode.
+    The coroutines will be run by the event loop.
+
+    :param _: no args, just create a passcode
+    :return: list of one coroutine that creates a passcode
+    """
+    return [passcode()]
 
 
-def passcode():
+parser.set_defaults(handler=handler)
+
+
+async def passcode() -> str:
     """
     Create a valid passcode and return it as a string
     """
+    salt = coring.Salter(
+        raw=pysodium.randombytes(
+            pysodium.crypto_sign_SEEDBYTES
+        )
+    ).qb64
 
-    return (coring.Salter(raw=pysodium.randombytes(pysodium.crypto_sign_SEEDBYTES)).qb64)
+    print(salt)
+    return salt

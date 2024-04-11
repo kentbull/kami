@@ -26,6 +26,7 @@ def openCF(cls=None, filed=True, **kwa):
     return filing.openFiler(cls=cls, filed=filed, **kwa)
 
 
+
 class Configer(filing.Filer):
     """
     Habitat Config File
@@ -193,7 +194,23 @@ class Configer(filing.Filer):
                              f"not '.json', '.mgpk', or 'cbor'.")
         return it
 
-# class ConfigerDoer(doing.Doer):
+class ConfigerCtx:
+    """
+    Async context manager for Configer instance
+    """
+    def __init__(self, configer: Configer):
+        self.configer: Configer = configer
+
+    async def __aenter__(self) -> Configer:
+        if not self.configer.opened:
+            self.configer.reopen()
+        return self.configer
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.configer.close(clear=self.configer.temp)
+
+class ConfigerDoer:  # used to be a (doing.Doer):
+    pass
 #     """
 #     Basic Filer Doer
 #

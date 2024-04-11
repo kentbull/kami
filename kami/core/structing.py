@@ -324,15 +324,16 @@ class Structor:
                 if not (issubclass(clan, tuple) and hasattr(clan, "_fields")):
                     raise InvalidValueError(f"Not namedtuple subclass {clan=}.")
             else:
-                raise InvalidValueError("Missing or unobtainable clan.")
+                raise InvalidValueError(f"Missing or unobtainable clan.")
 
             # have clan but may not have cast
             if cast:
                 if not isinstance(cast, clan):
                     if isinstance(cast, tuple) and hasattr(cast, "_fields"):
                         if cast._fields != clan._fields:
-                            raise InvalidValueError(
-                                f"Mismatching fields clan={clan._fields} and cast={cast._fields}.")
+                            raise InvalidValueError(f"Mismatching fields clan="
+                                                    f"{clan._fields} and cast="
+                                                    f"{cast._fields}.")
 
                         cast = clan(**cast._asdict())  # convert to clan
 
@@ -340,8 +341,9 @@ class Structor:
 
                     elif isinstance(cast, Mapping):
                         if tuple(cast) != clan._fields:
-                            raise InvalidValueError(
-                                f"Mismatching fields clan={clan._fields} and keys cast={tuple(cast)}.")
+                            raise InvalidValueError(f"Mismatching fields clan="
+                                                    f"{clan._fields} and keys cast="
+                                                    f"{tuple(cast)}.")
 
                         cast = clan(**cast)  # convert to clan
 
@@ -355,7 +357,7 @@ class Structor:
                 if (cname := self.Names.get(clan._fields)):
                     cast = self.Casts[cname]  # get known cast
                 else:  # cast missing or unobtainable
-                    raise InvalidValueError("Missing or unobtainable cast.")
+                    raise InvalidValueError(f"Missing or unobtainable cast.")
 
             # have cast now
             for klas in cast:

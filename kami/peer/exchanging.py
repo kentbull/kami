@@ -28,7 +28,7 @@ class Exchanger:
         """ Initialize instance
 
         Parameters:
-            hby (Haberyu): database environment
+            hby (Habery): database environment
             handlers(list): list of Handlers capable of responding to exn messages
             cues (Deck):  of Cues i.e. notices of requests needing response
             delta (timedelta): message timeout window
@@ -42,8 +42,7 @@ class Exchanger:
 
         for handler in handlers:
             if handler.resource in self.routes:
-                raise ValidationError("unable to register behavior {}, it has already been registered"
-                                      "".format(handler.resource))
+                raise ValidationError(f"unable to register behavior {handler.resource}, it has already been registered")
 
             self.routes[handler.resource] = handler
 

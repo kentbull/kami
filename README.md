@@ -36,6 +36,9 @@ For ease of translating the package structures exactly mirror KERIpy, KERIA, and
   - vdr.credentialing.Credentialer
   - vdr.credentialing.RegeryDoer
   - vdr.credentialing.Registrar
+- Add aiofiles support to the following:
+  - app.configing.Configer
+  - 
 
 ## Tools Used
 - Ruff 
