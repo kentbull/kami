@@ -8,8 +8,7 @@ from dataclasses import dataclass, astuple
 
 from kami.help.helping import b64ToInt, intToB64
 
-MaxON = int("f"*32, 16)  # 256 ** 16 - 1 maximum ordinal number, sequence or first seen etc
-
+MaxON = int("f" * 32, 16)  # 256 ** 16 - 1 maximum ordinal number, sequence or first seen etc
 
 # Serialization Kinds
 Serialage = namedtuple("Serialage", 'json mgpk cbor cesr')
@@ -24,24 +23,23 @@ Version = Versionage(major=1, minor=0)  # KERI Protocol Version
 Vrsn_1_0 = Versionage(major=1, minor=0)  # KERI Protocol Version Specific
 Vrsn_2_0 = Versionage(major=2, minor=0)  # KERI Protocol Version Specific
 
-
 # "{:0{}x}".format(300, 6)  # make num char in hex a variable
 # '00012c'
 VERFMT = "{}{:x}{:x}{}{:0{}x}_"  # version format string
 VERRAWSIZE = 6  # hex characters in raw serialization size in version string
 
-#VEREX0 = b'(?P<proto>[A-Z]{4})(?P<major>[0-9a-f])(?P<minor>[0-9a-f])(?P<kind>[A-Z]{4})(?P<size>[0-9a-f]{6})_'
-#Rever = re.compile(VEREX0)  # compile is faster
+# VEREX0 = b'(?P<proto>[A-Z]{4})(?P<major>[0-9a-f])(?P<minor>[0-9a-f])(?P<kind>[A-Z]{4})(?P<size>[0-9a-f]{6})_'  # noqa: E501
+# Rever = re.compile(VEREX0)  # compile is faster
 
 # version string in JSON, CBOR, or MGPK field map serialization version 1
 VER1FULLSPAN = 17  # number of characters in full version string
 VER1TERM = b'_'
-VEREX1 = b'(?P<proto1>[A-Z]{4})(?P<major1>[0-9a-f])(?P<minor1>[0-9a-f])(?P<kind1>[A-Z]{4})(?P<size1>[0-9a-f]{6})_'
+VEREX1 = b'(?P<proto1>[A-Z]{4})(?P<major1>[0-9a-f])(?P<minor1>[0-9a-f])(?P<kind1>[A-Z]{4})(?P<size1>[0-9a-f]{6})_'  # noqa: E501
 
 # version string in JSON, CBOR, or MGPK field map serialization version 2
 VER2FULLSPAN = 16  # number of characters in full version string
 VER2TERM = b'.'
-VEREX2 = b'(?P<proto2>[A-Z]{4})(?P<major2>[0-9A-Za-z_-])(?P<minor2>[0-9A-Za-z_-]{2})(?P<kind2>[A-Z]{4})(?P<size2>[0-9A-Za-z_-]{4})\.'
+VEREX2 = b'(?P<proto2>[A-Z]{4})(?P<major2>[0-9A-Za-z_-])(?P<minor2>[0-9A-Za-z_-]{2})(?P<kind2>[A-Z]{4})(?P<size2>[0-9A-Za-z_-]{4})\\.'  # noqa: E501
 
 VEREX = VEREX2 + b'|' + VEREX1
 
@@ -53,8 +51,6 @@ Rever = re.compile(VEREX)  # compile is faster
 MAXVSOFFSET = 12
 SMELLSIZE = MAXVSOFFSET + MAXVERFULLSPAN  # min buffer size to inhale
 
-
-
 """
 Smellage  (results of smelling a version string such as in a Serder)
     proto (str): protocol type value of Protocols examples 'KERI', 'ACDC'
@@ -65,7 +61,8 @@ Smellage  (results of smelling a version string such as in a Serder)
                 For CESR native genus version namedtuple (major, minor) of ints
 
 """
-Smellage = namedtuple("Smellage", "proto vrsn kind size gvrsn", defaults=(None, ))
+Smellage = namedtuple("Smellage", "proto vrsn kind size gvrsn", defaults=(None,))
+
 
 def rematch(match):
     """
@@ -82,11 +79,11 @@ def rematch(match):
     """
     full = match.group()  # full matched version string
     if len(full) == VER2FULLSPAN and full[-1] == ord(VER2TERM):
-        proto, major, minor, kind, size  = match.group("proto2",
-                                                       "major2",
-                                                       "minor2",
-                                                       "kind2",
-                                                       "size2")
+        proto, major, minor, kind, size = match.group("proto2",
+                                                      "major2",
+                                                      "minor2",
+                                                      "kind2",
+                                                      "size2")
         proto = proto.decode("utf-8")
         if proto not in Protocols:
             raise ProtocolError(f"Invalid protocol={proto}.")
@@ -101,10 +98,10 @@ def rematch(match):
 
     elif len(full) == VER1FULLSPAN and full[-1] == ord(VER1TERM):
         proto, major, minor, kind, size = match.group("proto1",
-                                                     "major1",
-                                                     "minor1",
-                                                     "kind1",
-                                                     "size1")
+                                                      "major1",
+                                                      "minor1",
+                                                      "kind1",
+                                                      "size1")
         proto = proto.decode("utf-8")
         if proto not in Protocols:
             raise ProtocolError(f"Invalid protocol={proto}.")
@@ -118,7 +115,7 @@ def rematch(match):
         size = int(size, 16)
 
     else:
-        raise VersionError(f"Bad rematch.")
+        raise VersionError("Bad rematch.")
 
     return Smellage(proto=proto, vrsn=vrsn, kind=kind, size=size)
 
@@ -166,7 +163,7 @@ def deversify(vs):
         serialization kind
         serialization size
     """
-    if hasattr(vs, "encode"):   # match takes bytes
+    if hasattr(vs, "encode"):  # match takes bytes
         vs = vs.encode("utf-8")
 
     match = Rever.match(vs)
@@ -191,7 +188,7 @@ def smell(raw):
 
     """
     if len(raw) < SMELLSIZE:
-        raise ShortageError(f"Need more raw bytes to smell full version string.")
+        raise ShortageError(f"Need more raw bytes (got {len(raw)} to smell full version string.")
 
     match = Rever.search(raw)  # Rever regex takes bytes/bytearray not str
     if not match or match.start() > MAXVSOFFSET:
@@ -333,13 +330,13 @@ Ilks = Ilkage(icp='icp', rot='rot', ixn='ixn', dip='dip', drt='drt',
 SEPARATOR = "\r\n\r\n"
 SEPARATOR_BYTES = SEPARATOR.encode("utf-8")
 
-
 Schemage = namedtuple("Schemage", 'tcp http https')
 Schemes = Schemage(tcp='tcp', http='http', https='https')
 
 Rolage = namedtuple("Rolage", 'controller witness registrar watcher judge juror peer mailbox agent')
 Roles = Rolage(controller='controller', witness='witness', registrar='registrar',
-               watcher='watcher', judge='judge', juror='juror', peer='peer', mailbox="mailbox", agent="agent")
+               watcher='watcher', judge='judge', juror='juror', peer='peer', mailbox="mailbox",
+               agent="agent")
 
 
 @dataclass(frozen=True)
@@ -352,10 +349,10 @@ class TraitCodex:
     """
     EstOnly: str = 'EO'  # Only allow establishment events. Inception only.
     DoNotDelegate: str = 'DND'  # Dot not allow delegated identifiers. Inception only.
-    RegistrarBackers: str = 'RB' # Registrar backer provided in Registrar seal in this event
-    NoBackers: str = 'NB'  #  Do not allow any (registrar backers).
-                             # Inception and Rotation in v2.  This should be NRB in next version.
-    NoRegistrarBackers: str = 'NRB'  #  Do not allow any registrar backers. Inception and Rotation.
+    RegistrarBackers: str = 'RB'  # Registrar backer provided in Registrar seal in this event
+    NoBackers: str = 'NB'  # Do not allow any (registrar backers).
+    # Inception and Rotation in v2.  This should be NRB in next version.
+    NoRegistrarBackers: str = 'NRB'  # Do not allow any registrar backers. Inception and Rotation.
     DelegateIsDelegator: str = 'DID'  # Treat delegate AIDs same as their delegator. Inception only
 
     def __iter__(self):
@@ -558,6 +555,7 @@ class InvalidVarRawSizeError(InvalidSizeError):
         raise InvalidRawSizeError("error message")
     """
 
+
 # Errors serializing messages
 
 class SerializeError(KeriError):
@@ -567,7 +565,6 @@ class SerializeError(KeriError):
     Usage:
         raise MessageError("error message")
     """
-
 
 
 # Errors validating  event messages and attachements
@@ -683,6 +680,7 @@ class DerivationError(ValidationError):
         raise DerivationError("error message")
     """
 
+
 class UnverifiedReplyError(ValidationError):
     """
     Error Reply message not verified usually missing sigs
@@ -690,12 +688,14 @@ class UnverifiedReplyError(ValidationError):
         raise UnverifiedReplyError("error message")
     """
 
+
 class EmptyListError(ValidationError):
     """
     Error Required non empty list is empty
     Usage:
         raise EmptyListError("error message")
     """
+
 
 class MissingAnchorError(ValidationError):
     """
@@ -752,6 +752,7 @@ class OutOfOrderTxnStateError(ValidationError):
         raise OutOfOrderTxnStateError("error message")
     """
 
+
 class MisfitEventSourceError(ValidationError):
     """
     Error referenced event missing from log so can't verify this txn state event
@@ -759,13 +760,13 @@ class MisfitEventSourceError(ValidationError):
         raise MisfitEventSourceError("error message")
     """
 
+
 class MissingDelegableApprovalError(ValidationError):
     """
     Error referenced event missing from log so can't verify this txn state event
     Usage:
         raise MissingDelegableApprovalError("error message")
     """
-
 
 
 # Stream Parsing and Extraction Errors
@@ -812,6 +813,7 @@ class VersionError(ExtractionError):
         raise VersionError("error message")
     """
 
+
 class ProtocolError(ExtractionError):
     """
     Bad or Unsupported Protocol type
@@ -819,6 +821,7 @@ class ProtocolError(ExtractionError):
     Usage:
         raise ProtocolError("error message")
     """
+
 
 class KindError(ExtractionError):
     """
@@ -838,6 +841,7 @@ class ConversionError(ExtractionError):
 
     """
 
+
 class DeserializeError(ExtractionError):
     """
     Error deserializing message
@@ -853,6 +857,7 @@ class FieldError(DeserializeError):
         raise FieldError("error message")
 
     """
+
 
 class ElementError(DeserializeError):
     """
@@ -894,8 +899,6 @@ class UnexpectedOpCodeError(DerivationCodeError):
     """
 
 
-
-
 # Other errors
 
 class ExchangeError(KeriError):
@@ -928,6 +931,7 @@ class InvalidGroupError(KeriError):
     Usage:
         raise InvalidGroupError("error message")
     """
+
 
 class GroupFormationError(KeriError):
     """
@@ -988,3 +992,32 @@ class QueryNotFoundError(KeriError):
         raise QueryNotFoundError("error message")
     """
 
+
+class ValidationError(KeriError):
+    """
+    Validation related errors
+    Usage:
+        raise ValidationError("error message")
+    """
+
+
+class OglerError(KeriError):
+    """
+    Error using or configuring Ogler
+
+    Usage:
+        raise OglerError("error message")
+    """
+
+
+class Mixin:
+    """
+    Base class to enable consistent MRO for mixin multiple inheritance
+    Allows each subclass to call
+    super(MixinSubClass, self).__init__(*pa, **kwa)
+    So the __init__ propagates to common top of Tree
+    https://medium.com/geekculture/cooperative-multiple-inheritance-in-python-practice-60e3ac5f91cc
+    """
+
+    def __init__(self, *pa, **kwa):
+        pass

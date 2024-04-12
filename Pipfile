@@ -3,6 +3,7 @@
 
 [packages]
 aiofiles = '23.2.1'
+aiohttp = "3.9.3"
 apispec = "==6.6.0"
 blake3 = "==0.4.1"
 cbor2 = "==5.6.2"
@@ -23,16 +24,17 @@ pysodium = "==0.7.17"
 PyYaml = "==6.0.1"
 semver = "==3.0.2"
 uvloop = '==0.19.0'
-kami = "*"
+ruff = "==0.3.5"
 
 [dev-packages]
 coverage = "==7.4.4"
 pytest = "==8.1.1"
 pytest-asyncio = "==0.23.6"
 pytest-shell = "==0.3.2"
+ruff = "==0.3.5"
+mypy = "==1.9.0"
 
 [requires]
 python_version = '3.12.2'
 
-[tool]
-pytest = {ini_options = asyncio_mode = "auto"}
+

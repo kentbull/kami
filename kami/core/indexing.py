@@ -4,28 +4,17 @@ kami.core.indexing module
 
 Provides versioning support for Indexer classes and codes
 """
-from collections import namedtuple, deque
-from dataclasses import dataclass, astuple, asdict
-from base64 import urlsafe_b64encode as encodeB64
 from base64 import urlsafe_b64decode as decodeB64
+from base64 import urlsafe_b64encode as encodeB64
+from collections import namedtuple
+from dataclasses import dataclass, astuple
 
-import pysodium
-
-
-from ..kering import (EmptyMaterialError, RawMaterialError, SoftMaterialError,
-                      InvalidCodeError, InvalidSoftError,
-                      InvalidSizeError,
-                      InvalidCodeSizeError, InvalidVarIndexError,
-                      InvalidVarSizeError, InvalidVarRawSizeError,
-                      ConversionError, InvalidValueError, InvalidTypeError,
-                      ValidationError, VersionError, DerivationError,
-                      EmptyListError,
-                      ShortageError, UnexpectedCodeError, DeserializeError,
-                      UnexpectedCountCodeError, UnexpectedOpCodeError)
-
-from ..help import helping
 from ..help.helping import (sceil, intToB64, b64ToInt,
                             codeB64ToB2, codeB2ToB64, nabSextets)
+from ..kering import (EmptyMaterialError, RawMaterialError, InvalidCodeSizeError,
+                      InvalidVarIndexError,
+                      ConversionError, ValidationError, ShortageError, UnexpectedCodeError,
+                      UnexpectedCountCodeError, UnexpectedOpCodeError)
 
 
 @dataclass(frozen=True)
